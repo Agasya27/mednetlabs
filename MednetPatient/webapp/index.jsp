@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<%@ page isELIgnored="true" %>
 <html>
 <head>
     <title>Dashboard — MednetLabs</title>
@@ -7,7 +8,6 @@
 <body>
 <div class="container">
 
-```
 <div class="page-header">
     <div>
         <p class="page-title">Dashboard</p>
@@ -53,7 +53,6 @@
         </table>
     </div>
 </div>
-```
 
 </div>
 
@@ -69,21 +68,30 @@ fetch('/MednetPatient/api/patients')
     let active = data.filter(p => p.status === "Active").length;
     document.getElementById("activePatients").innerText = active;
 
-    // Doctors (not available yet)
-    document.getElementById("totalDoctors").innerText = "N/A";
+    // Doctors count from API
+    fetch('/MednetPatient/api/doctors')
+      .then(r => r.json())
+      .then(docs => {
+        document.getElementById("totalDoctors").innerText = docs.length;
+      })
+      .catch(() => {
+        document.getElementById("totalDoctors").innerText = "N/A";
+      });
 
     // Recent Patients (Top 5)
     let table = document.getElementById("recentPatients");
     table.innerHTML = "";
 
-    data.slice(0,5).forEach(p => {
-        table.innerHTML += `
-            <tr>
-                <td><strong>${p.name}</strong></td>
-                <td>${p.diagnosis}</td>
-                <td>${p.status}</td>
-            </tr>
-        `;
+    data.slice(0, 5).forEach(p => {
+        let statusBadge = p.status === "Active"
+            ? '<span class="badge-active">Active</span>'
+            : '<span class="badge-discharged">Discharged</span>';
+        let row = document.createElement("tr");
+        row.innerHTML =
+            '<td><strong>' + (p.name || '') + '</strong></td>' +
+            '<td>' + (p.diagnosis || '') + '</td>' +
+            '<td>' + statusBadge + '</td>';
+        table.appendChild(row);
     });
 
   })
@@ -94,4 +102,3 @@ fetch('/MednetPatient/api/patients')
 
 </body>
 </html>
-

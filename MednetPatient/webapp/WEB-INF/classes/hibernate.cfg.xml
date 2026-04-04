@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE hibernate-configuration PUBLIC
+        "-//Hibernate/Hibernate Configuration DTD 3.0//EN"
+        "http://www.hibernate.org/dtd/hibernate-configuration-3.0.dtd">
+
+<hibernate-configuration>
+    <session-factory>
+
+        <!-- Database connection -->
+        <property name="connection.driver_class">com.mysql.cj.jdbc.Driver</property>
+        <property name="connection.url">jdbc:mysql://localhost:3306/mednet_db</property>
+        <property name="connection.username">root</property>
+        <property name="connection.password">MednetLabs123</property>
+
+        <!-- MySQL 8 dialect -->
+        <property name="dialect">org.hibernate.dialect.MySQL8Dialect</property>
+
+        <!-- Connection pool size (built-in, basic) -->
+        <property name="connection.pool_size">5</property>
+
+        <!-- Do not print SQL to console in production; set true while debugging -->
+        <property name="show_sql">false</property>
+
+        <!-- Do NOT auto-create or alter tables — schema already exists -->
+        <property name="hbm2ddl.auto">none</property>
+
+        <!-- Registered entity classes -->
+        <mapping class="com.mednetlabs.model.Doctor"/>
+        <mapping class="com.mednetlabs.model.Patient"/>
+
+    </session-factory>
+</hibernate-configuration>

@@ -7,7 +7,7 @@ import java.util.List;
 
 /**
  * PatientService — business logic and validation sit here.
- * The servlet calls this layer; it never touches JDBC directly.
+ * The servlet calls this layer; it never touches DB directly.
  */
 public class PatientService {
 
@@ -21,15 +21,40 @@ public class PatientService {
 
     // ── POST ─────────────────────────────────────────────────────────────────
 
-    /**
-     * Validates input, then delegates insert to the DAO.
-     *
-     * @return the newly generated patient_id
-     * @throws IllegalArgumentException for any validation failure
-     */
     public int addPatient(Patient p) throws Exception {
         validate(p);
         return dao.addPatient(p);
+    }
+
+    // ── PUT ──────────────────────────────────────────────────────────────────
+
+    public Patient updatePatient(int id, Patient incoming) throws Exception {
+        if (id <= 0) {
+            throw new IllegalArgumentException("Invalid patient ID.");
+        }
+        Patient existing = dao.getById(id);
+        if (existing == null) {
+            throw new IllegalArgumentException("Patient with id " + id + " not found.");
+        }
+        // Merge: only overwrite fields that were sent in the request
+        if (incoming.getName()      != null) existing.setName(incoming.getName());
+        if (incoming.getGender()    != null) existing.setGender(incoming.getGender());
+        if (incoming.getDiagnosis() != null) existing.setDiagnosis(incoming.getDiagnosis());
+        if (incoming.getStatus()    != null) existing.setStatus(incoming.getStatus());
+        if (incoming.getDoctorId()  != null) existing.setDoctorId(incoming.getDoctorId());
+        if (incoming.getAge() > 0)           existing.setAge(incoming.getAge());
+
+        validate(existing);  // validate merged result before saving
+        return dao.update(existing);
+    }
+
+    // ── DELETE ───────────────────────────────────────────────────────────────
+
+    public void deletePatient(int id) throws Exception {
+        if (id <= 0) {
+            throw new IllegalArgumentException("Invalid patient ID.");
+        }
+        dao.delete(id);  // throws RuntimeException if not found
     }
 
     // ── Validation ───────────────────────────────────────────────────────────

@@ -18,12 +18,12 @@ import java.util.Map;
 
 /**
  * PatientServlet — thin HTTP layer only.
- * Reads the request, delegates to PatientService, writes JSON response.
- * No SQL, no business logic here.
  *
  * Endpoints:
- *   GET  /api/patients          → list all patients
- *   POST /api/patients          → add a new patient
+ *   GET    /api/patients          → list all patients
+ *   POST   /api/patients          → add a new patient
+ *   PUT    /api/patients?id=1     → update an existing patient (partial update)
+ *   DELETE /api/patients?id=1     → delete a patient
  */
 @WebServlet("/api/patients")
 public class PatientServlet extends HttpServlet {
@@ -31,64 +31,38 @@ public class PatientServlet extends HttpServlet {
     private final PatientService service = new PatientService();
     private final Gson gson = new Gson();
 
-    // ── GET /api/patients ────────────────────────────────────────────────────
+    // ── GET ──────────────────────────────────────────────────────────────────
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse res)
             throws ServletException, IOException {
 
         setJsonResponse(res);
-
         try {
             List<Patient> patients = service.getAllPatients();
             writeJson(res, HttpServletResponse.SC_OK, patients);
-
         } catch (Exception e) {
             writeError(res, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
                     "Failed to fetch patients: " + e.getMessage());
         }
     }
 
-    // ── POST /api/patients ───────────────────────────────────────────────────
+    // ── POST ─────────────────────────────────────────────────────────────────
     //
-    //  Expected JSON body:
-    //  {
-    //    "name":      "Riya Sharma",
-    //    "age":       28,
-    //    "gender":    "Female",          // Male | Female | Other
-    //    "diagnosis": "Typhoid",
-    //    "doctorId":  2,                 // optional — omit or 0 if unassigned
-    //    "status":    "Active"           // optional — defaults to Active
-    //  }
+    //  Body: { "name":"Riya","age":28,"gender":"Female","diagnosis":"Typhoid",
+    //          "doctorId":2, "status":"Active" }
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse res)
             throws ServletException, IOException {
 
         setJsonResponse(res);
-
         try {
-            // 1. Read full request body
-            StringBuilder body = new StringBuilder();
-            BufferedReader reader = req.getReader();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                body.append(line);
-            }
+            Patient patient = parseBody(req, res);
+            if (patient == null) return;
 
-            if (body.toString().trim().isEmpty()) {
-                writeError(res, HttpServletResponse.SC_BAD_REQUEST,
-                        "Request body is empty.");
-                return;
-            }
-
-            // 2. Deserialize JSON → Patient  (Gson handles this cleanly)
-            Patient patient = gson.fromJson(body.toString(), Patient.class);
-
-            // 3. Validate + insert via service layer
             int newId = service.addPatient(patient);
 
-            // 4. Return 201 Created with the new patient's id
             Map<String, Object> result = new HashMap<>();
             result.put("success", true);
             result.put("message", "Patient added successfully.");
@@ -96,16 +70,100 @@ public class PatientServlet extends HttpServlet {
             writeJson(res, HttpServletResponse.SC_CREATED, result);
 
         } catch (IllegalArgumentException e) {
-            // Validation errors (bad input from client)
             writeError(res, HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
-
         } catch (Exception e) {
             writeError(res, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
                     "Server error: " + e.getMessage());
         }
     }
 
+    // ── PUT ──────────────────────────────────────────────────────────────────
+    //
+    //  URL:  PUT /api/patients?id=5
+    //  Body: any fields you want to change (only sent fields are updated)
+    //  { "diagnosis":"Malaria", "status":"Discharged" }
+
+    @Override
+    protected void doPut(HttpServletRequest req, HttpServletResponse res)
+            throws ServletException, IOException {
+
+        setJsonResponse(res);
+        try {
+            String idParam = req.getParameter("id");
+            if (idParam == null) {
+                writeError(res, HttpServletResponse.SC_BAD_REQUEST,
+                        "Query parameter 'id' is required.");
+                return;
+            }
+
+            int id = Integer.parseInt(idParam);
+            Patient incoming = parseBody(req, res);
+            if (incoming == null) return;
+
+            Patient updated = service.updatePatient(id, incoming);
+            writeJson(res, HttpServletResponse.SC_OK, updated);
+
+        } catch (NumberFormatException e) {
+            writeError(res, HttpServletResponse.SC_BAD_REQUEST, "id must be a number.");
+        } catch (IllegalArgumentException e) {
+            writeError(res, HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
+        } catch (Exception e) {
+            writeError(res, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
+                    "Update failed: " + e.getMessage());
+        }
+    }
+
+    // ── DELETE ───────────────────────────────────────────────────────────────
+    //
+    //  URL:  DELETE /api/patients?id=5
+
+    @Override
+    protected void doDelete(HttpServletRequest req, HttpServletResponse res)
+            throws ServletException, IOException {
+
+        setJsonResponse(res);
+        try {
+            String idParam = req.getParameter("id");
+            if (idParam == null) {
+                writeError(res, HttpServletResponse.SC_BAD_REQUEST,
+                        "Query parameter 'id' is required.");
+                return;
+            }
+
+            int id = Integer.parseInt(idParam);
+            service.deletePatient(id);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("message", "Patient deleted successfully.");
+            writeJson(res, HttpServletResponse.SC_OK, result);
+
+        } catch (NumberFormatException e) {
+            writeError(res, HttpServletResponse.SC_BAD_REQUEST, "id must be a number.");
+        } catch (IllegalArgumentException e) {
+            writeError(res, HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
+        } catch (Exception e) {
+            writeError(res, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
+                    "Delete failed: " + e.getMessage());
+        }
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
+
+    /** Reads + parses the JSON request body. Returns null and writes a 400 if body is empty. */
+    private Patient parseBody(HttpServletRequest req, HttpServletResponse res)
+            throws IOException {
+        StringBuilder body = new StringBuilder();
+        BufferedReader reader = req.getReader();
+        String line;
+        while ((line = reader.readLine()) != null) body.append(line);
+
+        if (body.toString().trim().isEmpty()) {
+            writeError(res, HttpServletResponse.SC_BAD_REQUEST, "Request body is empty.");
+            return null;
+        }
+        return gson.fromJson(body.toString(), Patient.class);
+    }
 
     private void setJsonResponse(HttpServletResponse res) {
         res.setContentType("application/json");

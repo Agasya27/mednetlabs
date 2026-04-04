@@ -2,26 +2,38 @@ package com.mednetlabs.model;
 
 import com.google.gson.annotations.SerializedName;
 
-public class Patient {
+import javax.persistence.*;
+import javax.persistence.Transient;
 
+@Entity
+@Table(name = "patients")
+public class Patient {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "patient_id")
     private int id;
+    @Column(name = "patient_name")
     private String name;
     private int age;
     private String gender;
     private String diagnosis;
 
     @SerializedName("doctorId")
-    private Integer doctorId;       // Integer (not int) — can be NULL in DB
+    @Column(name = "doctor_id")
+    private Integer doctorId;       
 
     @SerializedName("doctorName")
-    private String doctorName;      // populated on GET via JOIN, not stored
+    @Column(name = "doctor_name")
+    @Transient
+    private String doctorName;      
 
     @SerializedName("admittedOn")
-    private String admittedOn;      // DATE as String (yyyy-MM-dd)
+    @Column(name = "admitted_on")
+    private String admittedOn;      
 
     private String status;
 
-    // ── Getters ──────────────────────────────────────────────────────────────
+    
 
     public int getId()          { return id; }
     public String getName()     { return name; }
@@ -33,7 +45,7 @@ public class Patient {
     public String getAdmittedOn(){ return admittedOn; }
     public String getStatus()   { return status; }
 
-    // ── Setters ──────────────────────────────────────────────────────────────
+    
 
     public void setId(int id)               { this.id = id; }
     public void setName(String name)        { this.name = name; }

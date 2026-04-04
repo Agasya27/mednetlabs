@@ -1,88 +1,103 @@
 package com.mednetlabs.dao;
 
-import com.mednetlabs.DBConnection;
 import com.mednetlabs.model.Patient;
+import com.mednetlabs.util.HibernateUtil;
+import org.hibernate.Session;
+import org.hibernate.Transaction;
 
-import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * PatientDAO — all SQL for the patients table lives here.
- * No business logic, no HTTP, no JSON — pure JDBC only.
- */
 public class PatientDAO {
 
-    // ── GET: all patients with doctor name via LEFT JOIN ─────────────────────
+    // ── GET ALL (with doctor name via JOIN) ──────────────────────────────────
 
-    public List<Patient> getAll() throws Exception {
-        List<Patient> list = new ArrayList<>();
+    @SuppressWarnings("unchecked")
+    public List<Patient> getAll() {
+        try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+            String sql =
+                "SELECT p.patient_id, p.patient_name, p.age, p.gender, p.diagnosis, " +
+                "       p.doctor_id, p.admitted_on, p.status, d.doctor_name " +
+                "FROM patients p " +
+                "LEFT JOIN doctors d ON p.doctor_id = d.doctor_id";
 
-        String sql = "SELECT p.patient_id, p.patient_name, p.age, p.gender, " +
-                     "       p.diagnosis, p.doctor_id, d.doctor_name, " +
-                     "       p.admitted_on, p.status " +
-                     "FROM patients p " +
-                     "LEFT JOIN doctors d ON p.doctor_id = d.doctor_id " +
-                     "ORDER BY p.admitted_on DESC";
+            List<Object[]> rows = session.createNativeQuery(sql).list();
+            List<Patient> result = new ArrayList<>();
 
-        try (Connection conn = DBConnection.getConnection();
-             Statement stmt  = conn.createStatement();
-             ResultSet rs    = stmt.executeQuery(sql)) {
-
-            while (rs.next()) {
+            for (Object[] row : rows) {
                 Patient p = new Patient();
-                p.setId(rs.getInt("patient_id"));
-                p.setName(rs.getString("patient_name"));
-                p.setAge(rs.getInt("age"));
-                p.setGender(rs.getString("gender"));
-                p.setDiagnosis(rs.getString("diagnosis"));
-
-                int docId = rs.getInt("doctor_id");
-                p.setDoctorId(rs.wasNull() ? null : docId);  // handle NULL FK
-
-                p.setDoctorName(rs.getString("doctor_name"));
-
-                Date admitted = rs.getDate("admitted_on");
-                p.setAdmittedOn(admitted != null ? admitted.toString() : null);
-
-                p.setStatus(rs.getString("status"));
-                list.add(p);
+                p.setId(((Number) row[0]).intValue());
+                p.setName((String) row[1]);
+                p.setAge(row[2] != null ? ((Number) row[2]).intValue() : 0);
+                p.setGender((String) row[3]);
+                p.setDiagnosis((String) row[4]);
+                p.setDoctorId(row[5] != null ? ((Number) row[5]).intValue() : null);
+                p.setAdmittedOn(row[6] != null ? row[6].toString() : null);
+                p.setStatus((String) row[7]);
+                p.setDoctorName((String) row[8]);
+                result.add(p);
             }
+            return result;
         }
-        return list;
     }
 
-    // ── POST: insert a new patient, return the generated patient_id ──────────
+    // ── GET BY ID ────────────────────────────────────────────────────────────
 
-    public int addPatient(Patient p) throws Exception {
-        String sql = "INSERT INTO patients " +
-                     "  (patient_name, age, gender, diagnosis, doctor_id, status) " +
-                     "VALUES (?, ?, ?, ?, ?, ?)";
+    public Patient getById(int id) {
+        try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+            return session.get(Patient.class, id);  // null if not found
+        }
+    }
 
-        try (Connection conn = DBConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+    // ── ADD PATIENT ──────────────────────────────────────────────────────────
 
-            stmt.setString(1, p.getName().trim());
-            stmt.setInt(2, p.getAge());
-            stmt.setString(3, p.getGender());
-            stmt.setString(4, p.getDiagnosis());
-
-            // doctor_id is nullable
-            if (p.getDoctorId() != null && p.getDoctorId() > 0) {
-                stmt.setInt(5, p.getDoctorId());
-            } else {
-                stmt.setNull(5, Types.INTEGER);
-            }
-
-            stmt.setString(6, p.getStatus() != null ? p.getStatus() : "Active");
-
-            stmt.executeUpdate();
-
-            ResultSet keys = stmt.getGeneratedKeys();
-            if (keys.next()) {
-                return keys.getInt(1);  // return new patient_id
+    public int addPatient(Patient p) {
+        try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+            Transaction tx = session.beginTransaction();
+            try {
+                int id = (int) session.save(p);
+                tx.commit();
+                return id;
+            } catch (Exception e) {
+                tx.rollback();          // rollback BEFORE session closes
+                throw e;
             }
         }
-        return -1;
+    }
+
+    // ── UPDATE PATIENT ───────────────────────────────────────────────────────
+
+    public Patient update(Patient p) {
+        try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+            Transaction tx = session.beginTransaction();
+            try {
+                session.update(p);
+                tx.commit();
+                return p;
+            } catch (Exception e) {
+                tx.rollback();
+                throw e;
+            }
+        }
+    }
+
+    // ── DELETE PATIENT ───────────────────────────────────────────────────────
+
+    public void delete(int id) {
+        try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+            Transaction tx = session.beginTransaction();
+            try {
+                Patient p = session.get(Patient.class, id);
+                if (p == null) {
+                    // throw first — catch block below handles rollback
+                    throw new RuntimeException("Patient with id " + id + " not found.");
+                }
+                session.delete(p);
+                tx.commit();
+            } catch (Exception e) {
+                if (tx != null && tx.isActive()) tx.rollback();
+                throw e;
+            }
+        }
     }
 }
